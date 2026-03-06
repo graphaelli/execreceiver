@@ -10,6 +10,16 @@
 
 An OpenTelemetry Collector receiver that runs external commands and captures their stdout/stderr output as log records.
 
+## Security Considerations
+
+This receiver executes arbitrary commands with the same privileges as the collector process. Keep the following in mind:
+
+- **Restrict access to the collector configuration.** Anyone who can modify the config can execute commands on the host.
+- **Use `clear_environment: true`** when possible. By default, commands inherit the collector's environment, which may contain secrets (API keys, tokens, credentials).
+- **Be mindful of command output.** Output flows into the telemetry pipeline and may contain sensitive data (PII, credentials, internal paths). Use processors to filter or redact as needed.
+- **Avoid passing secrets as command arguments.** The full command string is recorded in the `exec.command` log attribute on every record.
+- **Set `exec_timeout` in scheduled mode** to prevent runaway processes from accumulating.
+
 ## Modes
 
 ### Scheduled (default)
