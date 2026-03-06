@@ -343,14 +343,26 @@ func (r *execReceiver) streamLines(ctx context.Context, reader io.Reader, stream
 }
 
 // readLines reads all lines from a reader and returns them.
+// If max_output_size is set, reading stops once that many bytes have been
+// consumed and a warning is logged.
 func (r *execReceiver) readLines(reader io.Reader, stream string) []outputLine {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, r.cfg.MaxBufferSize), r.cfg.MaxBufferSize)
 
 	var lines []outputLine
+	var totalBytes int
 	for scanner.Scan() {
+		text := scanner.Text()
+		// Account for the line content plus a newline byte.
+		totalBytes += len(text) + 1
+		if r.cfg.MaxOutputSize > 0 && totalBytes > r.cfg.MaxOutputSize {
+			r.logger.Warn("Output truncated: max_output_size exceeded",
+				zap.String("stream", stream),
+				zap.Int("max_output_size", r.cfg.MaxOutputSize))
+			break
+		}
 		lines = append(lines, outputLine{
-			text:      scanner.Text(),
+			text:      text,
 			stream:    stream,
 			timestamp: time.Now(),
 		})

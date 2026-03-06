@@ -61,6 +61,12 @@ type Config struct {
 	// Default: false (start with a clean environment).
 	InheritEnvironment bool `mapstructure:"inherit_environment"`
 
+	// MaxOutputSize is the maximum total bytes buffered per scheduled
+	// execution in readLines. When exceeded, reading stops and the
+	// output is truncated. Default: 10485760 (10MB). 0 means no limit.
+	// Only used in scheduled mode.
+	MaxOutputSize int `mapstructure:"max_output_size"`
+
 	// RestartDelay is the delay before restarting a streaming command
 	// that has exited. Default: 1s. Only used in streaming mode.
 	RestartDelay time.Duration `mapstructure:"restart_delay"`
@@ -71,6 +77,7 @@ var (
 	errInvalidMode           = errors.New("mode must be 'scheduled' or 'streaming'")
 	errIntervalTooSmall      = errors.New("interval must be at least 1s")
 	errMaxBufferSizeTooSmall = errors.New("max_buffer_size must be at least 1024 bytes")
+	errMaxOutputSizeTooSmall = errors.New("max_output_size must be >= max_buffer_size when set")
 	errRestartDelayNegative  = errors.New("restart_delay must not be negative")
 )
 
@@ -92,6 +99,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.MaxBufferSize < 1024 {
 		errs = multierr.Append(errs, errMaxBufferSizeTooSmall)
+	}
+
+	if cfg.MaxOutputSize > 0 && cfg.MaxOutputSize < cfg.MaxBufferSize {
+		errs = multierr.Append(errs, errMaxOutputSizeTooSmall)
 	}
 
 	if cfg.RestartDelay < 0 {

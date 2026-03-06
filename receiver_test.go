@@ -366,6 +366,81 @@ func TestWorkingDirectory(t *testing.T) {
 	assert.True(t, body == "/tmp" || body == "/private/tmp", "unexpected working directory: %s", body)
 }
 
+func TestScheduledMaxOutputSize(t *testing.T) {
+	// Generate output that exceeds the max_output_size limit.
+	// Each line is "line_NNN\n" = 9 bytes. With max_output_size=50,
+	// we can fit about 5 lines (5*9=45 <= 50), and the 6th (54) exceeds it.
+	cfg := &Config{
+		Command:       []string{"sh", "-c", "for i in $(seq -w 1 20); do echo line_$i; done"},
+		Mode:          ModeScheduled,
+		Interval:      time.Hour,
+		IncludeStderr: true,
+		MaxBufferSize: 1024,
+		MaxOutputSize: 50,
+		RestartDelay:  time.Second,
+	}
+	r, sink := newTestReceiver(t, cfg)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() > 0
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// Should have fewer than 20 lines due to truncation
+	var bodies []string
+	for _, ld := range sink.AllLogs() {
+		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+			rl := ld.ResourceLogs().At(i)
+			for j := 0; j < rl.ScopeLogs().Len(); j++ {
+				sl := rl.ScopeLogs().At(j)
+				for k := 0; k < sl.LogRecords().Len(); k++ {
+					bodies = append(bodies, sl.LogRecords().At(k).Body().Str())
+				}
+			}
+		}
+	}
+
+	assert.Greater(t, len(bodies), 0, "should have at least one line")
+	assert.Less(t, len(bodies), 20, "output should be truncated before all 20 lines")
+}
+
+func TestScheduledMaxOutputSizeUnlimited(t *testing.T) {
+	// When max_output_size is 0, all output should be captured.
+	cfg := &Config{
+		Command:       []string{"sh", "-c", "for i in 1 2 3 4 5; do echo line$i; done"},
+		Mode:          ModeScheduled,
+		Interval:      time.Hour,
+		IncludeStderr: true,
+		MaxBufferSize: 1024,
+		MaxOutputSize: 0, // unlimited
+		RestartDelay:  time.Second,
+	}
+	r, sink := newTestReceiver(t, cfg)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() >= 5
+	}, 5*time.Second, 50*time.Millisecond)
+
+	var bodies []string
+	for _, ld := range sink.AllLogs() {
+		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+			rl := ld.ResourceLogs().At(i)
+			for j := 0; j < rl.ScopeLogs().Len(); j++ {
+				sl := rl.ScopeLogs().At(j)
+				for k := 0; k < sl.LogRecords().Len(); k++ {
+					bodies = append(bodies, sl.LogRecords().At(k).Body().Str())
+				}
+			}
+		}
+	}
+	assert.Equal(t, 5, len(bodies), "all 5 lines should be captured when unlimited")
+}
+
 func TestScheduledInterval(t *testing.T) {
 	cfg := &Config{
 		Command:       []string{"echo", "tick"},

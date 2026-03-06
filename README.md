@@ -42,6 +42,7 @@ If the command exits, it is restarted after a configurable delay.
 | `exec_timeout` | `duration` | `0` (none) | Maximum duration for a scheduled execution. Process is killed if exceeded. Only used in scheduled mode. |
 | `include_stderr` | `bool` | `true` | Whether to capture stderr output alongside stdout. |
 | `max_buffer_size` | `int` | `1048576` (1MB) | Maximum buffer size in bytes for reading a single line of output. |
+| `max_output_size` | `int` | `10485760` (10MB) | Maximum total bytes buffered per scheduled execution. Output is truncated when exceeded. `0` means no limit. Must be >= `max_buffer_size` when set. Only used in scheduled mode. |
 | `environment` | `map[string]string` | `{}` | Environment variables to set for the command. |
 | `working_directory` | `string` | *(inherit)* | Working directory for the command. |
 | `inherit_environment` | `bool` | `false` | If true, inherits the collector's environment as a base. When false (default), starts with a clean environment. `environment` entries are always added. |
