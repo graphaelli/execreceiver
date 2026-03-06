@@ -165,7 +165,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				MaxBufferSize:    2097152,
 				Environment:      map[string]string{"FOO": "bar"},
 				WorkingDirectory: "/tmp",
-				ClearEnvironment: false,
+				InheritEnvironment: false,
 			},
 		},
 		{
@@ -179,7 +179,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				MaxBufferSize:    524288,
 				Environment:      map[string]string{"ENV1": "value1", "ENV2": "value2"},
 				WorkingDirectory: "/tmp",
-				ClearEnvironment: true,
+				InheritEnvironment: true,
 				RestartDelay:     5 * time.Second,
 			},
 		},

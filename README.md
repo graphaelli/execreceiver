@@ -15,7 +15,7 @@ An OpenTelemetry Collector receiver that runs external commands and captures the
 This receiver executes arbitrary commands with the same privileges as the collector process. Keep the following in mind:
 
 - **Restrict access to the collector configuration.** Anyone who can modify the config can execute commands on the host.
-- **Use `clear_environment: true`** when possible. By default, commands inherit the collector's environment, which may contain secrets (API keys, tokens, credentials).
+- **Environment is clean by default.** Commands start with an empty environment unless `inherit_environment: true` is set. Avoid inheriting the collector's environment when it may contain secrets (API keys, tokens, credentials).
 - **Be mindful of command output.** Output flows into the telemetry pipeline and may contain sensitive data (PII, credentials, internal paths). Use processors to filter or redact as needed.
 - **Avoid passing secrets as command arguments.** The full command string is recorded in the `exec.command` log attribute on every record.
 - **Set `exec_timeout` in scheduled mode** to prevent runaway processes from accumulating.
@@ -44,7 +44,7 @@ If the command exits, it is restarted after a configurable delay.
 | `max_buffer_size` | `int` | `1048576` (1MB) | Maximum buffer size in bytes for reading a single line of output. |
 | `environment` | `map[string]string` | `{}` | Environment variables to set for the command. |
 | `working_directory` | `string` | *(inherit)* | Working directory for the command. |
-| `clear_environment` | `bool` | `false` | If true, starts with an empty environment (only `environment` vars are set). |
+| `inherit_environment` | `bool` | `false` | If true, inherits the collector's environment as a base. When false (default), starts with a clean environment. `environment` entries are always added. |
 | `restart_delay` | `duration` | `1s` | Delay before restarting a streaming command that has exited. Only used in streaming mode. |
 
 ### Example: Scheduled
@@ -140,7 +140,7 @@ are also available via the built-in `ObsReport` instrumentation.
 - **Graceful shutdown**: On shutdown, the receiver sends `SIGINT` to running processes, then `SIGKILL` after 5 seconds if the process hasn't exited.
 - **Scheduled mode**: Each execution runs independently. If `exec_timeout` is set, the process is killed if it exceeds the timeout.
 - **Streaming mode**: The command runs continuously. If it exits, the receiver waits `restart_delay` before restarting. The restart counter metric tracks how many times a streaming command has been restarted.
-- **Environment**: By default, the command inherits the collector's environment. Use `environment` to add variables, or `clear_environment: true` to start fresh.
+- **Environment**: By default, commands start with a clean environment. Use `environment` to set variables, or `inherit_environment: true` to inherit the collector's environment as a base.
 
 ## Building a Custom Collector
 
