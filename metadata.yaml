@@ -1,0 +1,55 @@
+type: exec
+
+status:
+  class: receiver
+  stability:
+    alpha: [logs]
+  codeowners:
+    active: [graphaelli]
+
+telemetry:
+  metrics:
+    exec_receiver_errors:
+      enabled: true
+      description: Total number of command execution errors.
+      stability: development
+      unit: "1"
+      sum:
+        value_type: int
+        monotonic: true
+    exec_receiver_execution_duration:
+      enabled: true
+      description: Duration of command executions.
+      stability: development
+      unit: s
+      histogram:
+        value_type: double
+        bucket_boundaries: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60]
+    exec_receiver_executions:
+      enabled: true
+      description: Total number of command executions started.
+      stability: development
+      unit: "1"
+      sum:
+        value_type: int
+        monotonic: true
+    exec_receiver_log_records:
+      enabled: true
+      description: Total number of log records produced from command output.
+      stability: development
+      unit: "1"
+      sum:
+        value_type: int
+        monotonic: true
+    exec_receiver_restarts:
+      enabled: true
+      description: Total number of streaming command restarts.
+      stability: development
+      unit: "1"
+      sum:
+        value_type: int
+        monotonic: true
+
+tests:
+  config:
+    command: ["echo", "hello"]

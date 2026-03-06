@@ -1,0 +1,20 @@
+receivers:
+  exec:
+    command: ["df", "-h"]
+    mode: scheduled
+    interval: 30s
+    include_stderr: true
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [exec]
+      processors: [batch]
+      exporters: [debug]

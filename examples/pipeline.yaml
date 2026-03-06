@@ -1,0 +1,38 @@
+receivers:
+  exec/disk:
+    command: ["df", "-h"]
+    mode: scheduled
+    interval: 60s
+
+  exec/uptime:
+    command: ["uptime"]
+    mode: scheduled
+    interval: 300s
+
+  exec/journal:
+    command: ["journalctl", "-f", "-o", "json"]
+    mode: streaming
+    restart_delay: 5s
+
+  exec/env_example:
+    command: ["sh", "-c", "echo status=$STATUS"]
+    mode: scheduled
+    interval: 10s
+    environment:
+      STATUS: "ok"
+    clear_environment: true
+    working_directory: /tmp
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [exec/disk, exec/uptime, exec/journal, exec/env_example]
+      processors: [batch]
+      exporters: [debug]
