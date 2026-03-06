@@ -30,7 +30,9 @@ Each execution produces a batch of log records from the command's output. If the
 ### Streaming
 
 Runs the command continuously and reads output line-by-line as it is produced.
-If the command exits, it is restarted after a configurable delay.
+If the command exits, it is restarted after a configurable delay with exponential backoff.
+The backoff starts at `restart_delay`, doubles on each consecutive failure, and caps at `max_restart_delay`.
+It resets when the command runs successfully for longer than `restart_delay`.
 
 ## Configuration
 
@@ -46,7 +48,8 @@ If the command exits, it is restarted after a configurable delay.
 | `environment` | `map[string]string` | `{}` | Environment variables to set for the command. |
 | `working_directory` | `string` | *(inherit)* | Working directory for the command. |
 | `inherit_environment` | `bool` | `false` | If true, inherits the collector's environment as a base. When false (default), starts with a clean environment. `environment` entries are always added. |
-| `restart_delay` | `duration` | `1s` | Delay before restarting a streaming command that has exited. Only used in streaming mode. |
+| `restart_delay` | `duration` | `1s` | Initial delay before restarting a streaming command that has exited. Doubles on each consecutive failure (exponential backoff), capped at `max_restart_delay`. Resets after the command runs longer than `restart_delay`. Only used in streaming mode. |
+| `max_restart_delay` | `duration` | `5m` | Maximum backoff delay for streaming command restarts. Must be >= `restart_delay`. Only used in streaming mode. |
 
 ### Example: Scheduled
 
@@ -140,7 +143,7 @@ are also available via the built-in `ObsReport` instrumentation.
 
 - **Graceful shutdown**: On shutdown, the receiver sends `SIGINT` to running processes, then `SIGKILL` after 5 seconds if the process hasn't exited.
 - **Scheduled mode**: Each execution runs independently. If `exec_timeout` is set, the process is killed if it exceeds the timeout.
-- **Streaming mode**: The command runs continuously. If it exits, the receiver waits `restart_delay` before restarting. The restart counter metric tracks how many times a streaming command has been restarted.
+- **Streaming mode**: The command runs continuously. If it exits, the receiver waits before restarting with exponential backoff (starting at `restart_delay`, doubling on each consecutive failure, capped at `max_restart_delay`). The backoff resets when the command runs longer than `restart_delay`. The restart counter metric tracks how many times a streaming command has been restarted.
 - **Environment**: By default, commands start with a clean environment. Use `environment` to set variables, or `inherit_environment: true` to inherit the collector's environment as a base.
 
 ### Audit Logging

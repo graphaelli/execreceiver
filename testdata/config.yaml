@@ -7,6 +7,7 @@ exec/streaming:
   command: ["tail", "-f", "/dev/null"]
   mode: streaming
   restart_delay: 2s
+  max_restart_delay: 10s
   include_stderr: false
   max_buffer_size: 2097152
   environment:
@@ -28,3 +29,4 @@ exec/full:
   working_directory: /tmp
   inherit_environment: true
   restart_delay: 5s
+  max_restart_delay: 30s

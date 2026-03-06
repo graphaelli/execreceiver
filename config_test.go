@@ -131,6 +131,40 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "restart_delay must not be negative",
 		},
 		{
+			name: "max_restart_delay less than restart_delay",
+			cfg: &Config{
+				Command:         []string{"tail", "-f", "/dev/null"},
+				Mode:            ModeStreaming,
+				Interval:        60 * time.Second,
+				MaxBufferSize:   1024 * 1024,
+				RestartDelay:    10 * time.Second,
+				MaxRestartDelay: 5 * time.Second,
+			},
+			wantErr: "max_restart_delay must be >= restart_delay",
+		},
+		{
+			name: "valid max_restart_delay",
+			cfg: &Config{
+				Command:         []string{"tail", "-f", "/dev/null"},
+				Mode:            ModeStreaming,
+				Interval:        60 * time.Second,
+				MaxBufferSize:   1024 * 1024,
+				RestartDelay:    time.Second,
+				MaxRestartDelay: 5 * time.Minute,
+			},
+		},
+		{
+			name: "max_restart_delay zero uses no cap",
+			cfg: &Config{
+				Command:         []string{"tail", "-f", "/dev/null"},
+				Mode:            ModeStreaming,
+				Interval:        60 * time.Second,
+				MaxBufferSize:   1024 * 1024,
+				RestartDelay:    time.Second,
+				MaxRestartDelay: 0,
+			},
+		},
+		{
 			name: "non-existent working directory",
 			cfg: &Config{
 				Command:          []string{"echo"},
@@ -177,13 +211,14 @@ func TestConfigLoadFromYAML(t *testing.T) {
 		{
 			id: component.NewID(component.MustNewType("exec")),
 			expected: &Config{
-				Command:       []string{"echo", "hello"},
-				Mode:          ModeScheduled,
-				Interval:      10 * time.Second,
-				IncludeStderr: true,
-				MaxBufferSize: 1024 * 1024,
-				MaxOutputSize: 10 * 1024 * 1024,
-				RestartDelay:  time.Second,
+				Command:         []string{"echo", "hello"},
+				Mode:            ModeScheduled,
+				Interval:        10 * time.Second,
+				IncludeStderr:   true,
+				MaxBufferSize:   1024 * 1024,
+				MaxOutputSize:   10 * 1024 * 1024,
+				RestartDelay:    time.Second,
+				MaxRestartDelay: 5 * time.Minute,
 			},
 		},
 		{
@@ -193,6 +228,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				Mode:               ModeStreaming,
 				Interval:           60 * time.Second,
 				RestartDelay:       2 * time.Second,
+				MaxRestartDelay:    10 * time.Second,
 				IncludeStderr:      false,
 				MaxBufferSize:      2097152,
 				MaxOutputSize:      10 * 1024 * 1024,
@@ -215,6 +251,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				WorkingDirectory:   "/tmp",
 				InheritEnvironment: true,
 				RestartDelay:       5 * time.Second,
+				MaxRestartDelay:    30 * time.Second,
 			},
 		},
 	}

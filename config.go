@@ -70,15 +70,21 @@ type Config struct {
 	// RestartDelay is the delay before restarting a streaming command
 	// that has exited. Default: 1s. Only used in streaming mode.
 	RestartDelay time.Duration `mapstructure:"restart_delay"`
+
+	// MaxRestartDelay is the maximum backoff delay for streaming command
+	// restarts. The restart delay doubles on each consecutive failure,
+	// capped at this value. Default: 5m. Only used in streaming mode.
+	MaxRestartDelay time.Duration `mapstructure:"max_restart_delay"`
 }
 
 var (
-	errEmptyCommand          = errors.New("command must not be empty")
-	errInvalidMode           = errors.New("mode must be 'scheduled' or 'streaming'")
-	errIntervalTooSmall      = errors.New("interval must be at least 1s")
-	errMaxBufferSizeTooSmall = errors.New("max_buffer_size must be at least 1024 bytes")
-	errMaxOutputSizeTooSmall = errors.New("max_output_size must be >= max_buffer_size when set")
-	errRestartDelayNegative  = errors.New("restart_delay must not be negative")
+	errEmptyCommand            = errors.New("command must not be empty")
+	errInvalidMode             = errors.New("mode must be 'scheduled' or 'streaming'")
+	errIntervalTooSmall        = errors.New("interval must be at least 1s")
+	errMaxBufferSizeTooSmall   = errors.New("max_buffer_size must be at least 1024 bytes")
+	errMaxOutputSizeTooSmall   = errors.New("max_output_size must be >= max_buffer_size when set")
+	errRestartDelayNegative    = errors.New("restart_delay must not be negative")
+	errMaxRestartDelayTooSmall = errors.New("max_restart_delay must be >= restart_delay")
 )
 
 // Validate checks the configuration for errors.
@@ -107,6 +113,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.RestartDelay < 0 {
 		errs = multierr.Append(errs, errRestartDelayNegative)
+	}
+
+	if cfg.MaxRestartDelay > 0 && cfg.MaxRestartDelay < cfg.RestartDelay {
+		errs = multierr.Append(errs, errMaxRestartDelayTooSmall)
 	}
 
 	if cfg.WorkingDirectory != "" {
