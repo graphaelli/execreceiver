@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# Patches pr-fix.lock.yml to use CLAUDE_CODE_OAUTH_TOKEN instead of ANTHROPIC_API_KEY.
-# Run after `gh aw compile` to reapply OAuth token support.
+# Patches a compiled gh-aw lock file to use CLAUDE_CODE_OAUTH_TOKEN instead of
+# ANTHROPIC_API_KEY.
+# Run after `gh aw compile` to reapply.
 set -euo pipefail
 
-LOCK="${1:-.github/workflows/pr-fix.lock.yml}"
+if [ $# -eq 0 ]; then
+  echo "usage: $0 <lock-file>" >&2
+  exit 1
+fi
+
+LOCK="$1"
 
 if [ ! -f "$LOCK" ]; then
   echo "error: $LOCK not found" >&2

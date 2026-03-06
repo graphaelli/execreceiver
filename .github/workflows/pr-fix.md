@@ -20,6 +20,8 @@ network: defaults
 
 safe-outputs:
   push-to-pull-request-branch:
+    target: "*"
+    max: 1
   create-issue:
     title-prefix: "${{ github.workflow }}"
     labels: [automation, pr-fix]
