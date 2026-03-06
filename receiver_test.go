@@ -33,6 +33,7 @@ func TestScheduledBasic(t *testing.T) {
 		Command:       []string{"echo", "hello"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour, // won't tick during test
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -77,6 +78,7 @@ func TestScheduledMultiLine(t *testing.T) {
 		Command:       []string{"printf", "a\nb\nc"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -110,6 +112,7 @@ func TestScheduledStderr(t *testing.T) {
 		Command:       []string{"sh", "-c", "echo error_output >&2"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -137,6 +140,7 @@ func TestScheduledStderrDisabled(t *testing.T) {
 		Command:       []string{"sh", "-c", "echo stdout_only && echo stderr_only >&2"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: false,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -170,6 +174,7 @@ func TestScheduledCommandError(t *testing.T) {
 		Command:       []string{"sh", "-c", "exit 1"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -193,6 +198,7 @@ func TestScheduledTimeout(t *testing.T) {
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		ExecTimeout:   500 * time.Millisecond,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -266,6 +272,7 @@ func TestShutdownBeforeStart(t *testing.T) {
 		Command:       []string{"echo", "hello"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -279,6 +286,7 @@ func TestEnvironment(t *testing.T) {
 		Command:       []string{"sh", "-c", "echo $TEST_VAR_EXEC"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -303,6 +311,7 @@ func TestCleanEnvironmentByDefault(t *testing.T) {
 		Command:       []string{"sh", "-c", "echo ${HOME:-empty}"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -326,6 +335,7 @@ func TestInheritEnvironment(t *testing.T) {
 		Command:            []string{"sh", "-c", "echo ${HOME:-empty}"},
 		Mode:               ModeScheduled,
 		Interval:           time.Hour,
+		MaxConcurrent:      1,
 		IncludeStderr:      true,
 		MaxBufferSize:      1024 * 1024,
 		RestartDelay:       time.Second,
@@ -349,6 +359,7 @@ func TestWorkingDirectory(t *testing.T) {
 		Command:          []string{"pwd"},
 		Mode:             ModeScheduled,
 		Interval:         time.Hour,
+		MaxConcurrent:    1,
 		IncludeStderr:    true,
 		MaxBufferSize:    1024 * 1024,
 		RestartDelay:     time.Second,
@@ -377,6 +388,7 @@ func TestScheduledMaxOutputSize(t *testing.T) {
 		Command:       []string{"sh", "-c", "for i in $(seq -w 1 20); do echo line_$i; done"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024,
 		MaxOutputSize: 50,
@@ -415,6 +427,7 @@ func TestScheduledMaxOutputSizeUnlimited(t *testing.T) {
 		Command:       []string{"sh", "-c", "for i in 1 2 3 4 5; do echo line$i; done"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024,
 		MaxOutputSize: 0, // unlimited
@@ -444,11 +457,49 @@ func TestScheduledMaxOutputSizeUnlimited(t *testing.T) {
 	assert.Equal(t, 5, len(bodies), "all 5 lines should be captured when unlimited")
 }
 
+func TestScheduledSkipOnConcurrencyLimit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command differs on windows")
+	}
+	// Use a slow command (sleep 10) with a short interval and max_concurrent=1.
+	// The first execution (triggered immediately on Start) will hold the
+	// semaphore for a long time. Subsequent ticks should be skipped.
+	cfg := &Config{
+		Command:       []string{"sleep", "10"},
+		Mode:          ModeScheduled,
+		Interval:      100 * time.Millisecond,
+		MaxConcurrent: 1,
+		IncludeStderr: true,
+		MaxBufferSize: 1024 * 1024,
+		RestartDelay:  time.Second,
+	}
+	r, _ := newTestReceiver(t, cfg)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	// Wait for a few ticks to fire while the slow command is still running.
+	// Ticks should be skipped because the semaphore is already held.
+	time.Sleep(500 * time.Millisecond)
+
+	// The semaphore should be full (1 slot occupied by sleep 10).
+	// Verify that we cannot acquire the semaphore (it's full).
+	select {
+	case r.sem <- struct{}{}:
+		// We acquired it, which means the slot was free -- unexpected
+		<-r.sem
+		t.Fatal("expected semaphore to be full, but acquired a slot")
+	default:
+		// Expected: semaphore is full
+	}
+}
+
 func TestScheduledInterval(t *testing.T) {
 	cfg := &Config{
 		Command:       []string{"echo", "tick"},
 		Mode:          ModeScheduled,
 		Interval:      200 * time.Millisecond,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -595,6 +646,7 @@ func TestAuditLogScheduled(t *testing.T) {
 		Command:       []string{"echo", "hello"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,
@@ -641,6 +693,7 @@ func TestAuditLogScheduledNonZeroExit(t *testing.T) {
 		Command:       []string{"sh", "-c", "exit 2"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,

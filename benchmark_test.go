@@ -73,6 +73,7 @@ func newBenchReceiver(b *testing.B) (*execReceiver, *consumertest.LogsSink) {
 		Command:       []string{"echo", "hello"},
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
+		MaxConcurrent: 1,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,
 		RestartDelay:  time.Second,

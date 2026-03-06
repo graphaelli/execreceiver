@@ -68,6 +68,22 @@ func AssertEqualExecReceiverExecutions(t *testing.T, tt *componenttest.Telemetry
 	metricdatatest.AssertEqual(t, want, got, opts...)
 }
 
+func AssertEqualExecReceiverExecutionsSkipped(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
+	want := metricdata.Metrics{
+		Name:        "otelcol_exec_receiver_executions_skipped",
+		Description: "Total number of scheduled executions skipped due to concurrency limit. [Development]",
+		Unit:        "1",
+		Data: metricdata.Sum[int64]{
+			Temporality: metricdata.CumulativeTemporality,
+			IsMonotonic: true,
+			DataPoints:  dps,
+		},
+	}
+	got, err := tt.GetMetric("otelcol_exec_receiver_executions_skipped")
+	require.NoError(t, err)
+	metricdatatest.AssertEqual(t, want, got, opts...)
+}
+
 func AssertEqualExecReceiverLogRecords(t *testing.T, tt *componenttest.Telemetry, dps []metricdata.DataPoint[int64], opts ...metricdatatest.Option) {
 	want := metricdata.Metrics{
 		Name:        "otelcol_exec_receiver_log_records",

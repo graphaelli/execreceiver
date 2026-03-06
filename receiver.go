@@ -42,6 +42,10 @@ type execReceiver struct {
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// sem is a semaphore that limits concurrent scheduled executions.
+	// It is initialized in Start() with capacity cfg.MaxConcurrent.
+	sem chan struct{}
 }
 
 func newExecReceiver(params receiver.Settings, cfg *Config, consumer consumer.Logs) (*execReceiver, error) {
@@ -81,6 +85,10 @@ func (r *execReceiver) Start(_ context.Context, _ component.Host) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 
+	if r.cfg.Mode == ModeScheduled {
+		r.sem = make(chan struct{}, r.cfg.MaxConcurrent)
+	}
+
 	r.wg.Add(1)
 	switch r.cfg.Mode {
 	case ModeScheduled:
@@ -112,15 +120,34 @@ func (r *execReceiver) runScheduled(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Execute immediately on start.
-	r.executeOnce(ctx)
+	r.tryExecute(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			r.executeOnce(ctx)
+			r.tryExecute(ctx)
 		}
+	}
+}
+
+// tryExecute attempts to acquire the concurrency semaphore and execute the
+// command. If the semaphore cannot be acquired (max_concurrent reached),
+// the execution is skipped and a warning is logged.
+func (r *execReceiver) tryExecute(ctx context.Context) {
+	select {
+	case r.sem <- struct{}{}:
+		// Acquired semaphore slot.
+		go func() {
+			defer func() { <-r.sem }()
+			r.executeOnce(ctx)
+		}()
+	default:
+		// Concurrency limit reached, skip this execution.
+		r.logger.Warn("Skipping scheduled execution: concurrency limit reached",
+			zap.Int("max_concurrent", r.cfg.MaxConcurrent))
+		r.telemetry.ExecReceiverExecutionsSkipped.Add(ctx, 1)
 	}
 }
 

@@ -29,6 +29,7 @@ type TelemetryBuilder struct {
 	ExecReceiverErrors            metric.Int64Counter
 	ExecReceiverExecutionDuration metric.Float64Histogram
 	ExecReceiverExecutions        metric.Int64Counter
+	ExecReceiverExecutionsSkipped metric.Int64Counter
 	ExecReceiverLogRecords        metric.Int64Counter
 	ExecReceiverRestarts          metric.Int64Counter
 }
@@ -78,6 +79,12 @@ func NewTelemetryBuilder(settings component.TelemetrySettings, options ...Teleme
 	builder.ExecReceiverExecutions, err = builder.meter.Int64Counter(
 		"otelcol_exec_receiver_executions",
 		metric.WithDescription("Total number of command executions started. [Development]"),
+		metric.WithUnit("1"),
+	)
+	errs = errors.Join(errs, err)
+	builder.ExecReceiverExecutionsSkipped, err = builder.meter.Int64Counter(
+		"otelcol_exec_receiver_executions_skipped",
+		metric.WithDescription("Total number of scheduled executions skipped due to concurrency limit. [Development]"),
 		metric.WithUnit("1"),
 	)
 	errs = errors.Join(errs, err)

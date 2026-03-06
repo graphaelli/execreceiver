@@ -25,7 +25,7 @@ This receiver executes arbitrary commands with the same privileges as the collec
 ### Scheduled (default)
 
 Runs the command on a configurable interval.
-Each execution produces a batch of log records from the command's output. If the command is still running when the next interval fires, the previous execution continues independently.
+Each execution produces a batch of log records from the command's output. If the command is still running when the next interval fires and the `max_concurrent` limit has been reached, that tick is skipped and a warning is logged.
 
 ### Streaming
 
@@ -42,6 +42,7 @@ It resets when the command runs successfully for longer than `restart_delay`.
 | `mode` | `string` | `scheduled` | Execution mode: `scheduled` or `streaming`. |
 | `interval` | `duration` | `60s` | Time between scheduled executions. Only used in scheduled mode. |
 | `exec_timeout` | `duration` | `0` (none) | Maximum duration for a scheduled execution. Process is killed if exceeded. Only used in scheduled mode. |
+| `max_concurrent` | `int` | `1` | Maximum number of concurrent command executions in scheduled mode. If the limit is reached when a tick fires, that execution is skipped and a warning is logged. Only used in scheduled mode. |
 | `include_stderr` | `bool` | `true` | Whether to capture stderr output alongside stdout. |
 | `max_buffer_size` | `int` | `1048576` (1MB) | Maximum buffer size in bytes for reading a single line of output. |
 | `max_output_size` | `int` | `10485760` (10MB) | Maximum total bytes buffered per scheduled execution. Output is truncated when exceeded. `0` means no limit. Must be >= `max_buffer_size` when set. Only used in scheduled mode. |
@@ -130,8 +131,9 @@ The receiver exposes internal metrics for monitoring its own operation:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `otelcol_exec_receiver_executions` | Counter | Total command executions started |
 | `otelcol_exec_receiver_errors` | Counter | Execution errors (start failures, non-zero exits) |
+| `otelcol_exec_receiver_executions` | Counter | Total command executions started |
+| `otelcol_exec_receiver_executions_skipped` | Counter | Scheduled executions skipped due to concurrency limit |
 | `otelcol_exec_receiver_execution_duration` | Histogram | Duration of command executions (seconds) |
 | `otelcol_exec_receiver_log_records` | Counter | Total log records produced from command output |
 | `otelcol_exec_receiver_restarts` | Counter | Streaming mode command restarts |

@@ -27,6 +27,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		Mode:            ModeScheduled,
 		Interval:        60 * time.Second,
+		MaxConcurrent:   1,
 		IncludeStderr:   true,
 		MaxBufferSize:   1024 * 1024,      // 1MB
 		MaxOutputSize:   10 * 1024 * 1024, // 10MB
