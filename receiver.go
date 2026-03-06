@@ -6,14 +6,14 @@ package execreceiver // import "github.com/graphaelli/execreceiver"
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
-
-	"os/exec"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -195,6 +195,15 @@ func (r *execReceiver) executeOnce(ctx context.Context) {
 	duration := time.Since(start)
 	r.telemetry.ExecReceiverExecutionDuration.Record(ctx, duration.Seconds())
 
+	r.logger.Info("Command exited",
+		zap.String("command", strings.Join(r.cfg.Command, " ")),
+		zap.Int("pid", pid),
+		zap.Int("exit_code", exitCode(cmdErr)),
+		zap.Duration("duration", duration),
+		zap.String("mode", string(r.cfg.Mode)),
+		zap.String("receiver_id", r.settings.ID.String()),
+	)
+
 	if cmdErr != nil {
 		r.logger.Warn("Command exited with error", zap.Error(cmdErr), zap.Int("pid", pid))
 		r.telemetry.ExecReceiverErrors.Add(ctx, 1)
@@ -236,6 +245,7 @@ func (r *execReceiver) runStreaming(ctx context.Context) {
 
 // streamCommand runs the command and streams output line-by-line to the consumer.
 func (r *execReceiver) streamCommand(ctx context.Context) {
+	start := time.Now()
 	cmd := r.buildCommand(ctx)
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -262,7 +272,12 @@ func (r *execReceiver) streamCommand(ctx context.Context) {
 	}
 
 	pid := cmd.Process.Pid
-	r.logger.Info("Started streaming command", zap.Int("pid", pid))
+	r.logger.Info("Command started",
+		zap.String("command", strings.Join(r.cfg.Command, " ")),
+		zap.Int("pid", pid),
+		zap.String("mode", string(r.cfg.Mode)),
+		zap.String("receiver_id", r.settings.ID.String()),
+	)
 
 	var readWg sync.WaitGroup
 	readWg.Add(1)
@@ -281,6 +296,17 @@ func (r *execReceiver) streamCommand(ctx context.Context) {
 
 	readWg.Wait()
 	cmdErr := cmd.Wait()
+
+	duration := time.Since(start)
+	r.logger.Info("Command exited",
+		zap.String("command", strings.Join(r.cfg.Command, " ")),
+		zap.Int("pid", pid),
+		zap.Int("exit_code", exitCode(cmdErr)),
+		zap.Duration("duration", duration),
+		zap.String("mode", string(r.cfg.Mode)),
+		zap.String("receiver_id", r.settings.ID.String()),
+	)
+
 	if cmdErr != nil && ctx.Err() == nil {
 		r.logger.Warn("Streaming command exited", zap.Error(cmdErr), zap.Int("pid", pid))
 		r.telemetry.ExecReceiverErrors.Add(ctx, 1)
@@ -363,6 +389,20 @@ func (r *execReceiver) buildCommand(ctx context.Context) *exec.Cmd {
 	}
 
 	return cmd
+}
+
+// exitCode extracts the exit code from an error returned by cmd.Wait.
+// It returns 0 if err is nil, or the exit code from exec.ExitError.
+// For other error types it returns -1.
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 // buildLogData constructs plog.Logs from output lines.

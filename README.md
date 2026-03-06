@@ -142,6 +142,23 @@ are also available via the built-in `ObsReport` instrumentation.
 - **Streaming mode**: The command runs continuously. If it exits, the receiver waits `restart_delay` before restarting. The restart counter metric tracks how many times a streaming command has been restarted.
 - **Environment**: By default, the command inherits the collector's environment. Use `environment` to add variables, or `clear_environment: true` to start fresh.
 
+### Audit Logging
+
+The receiver emits structured INFO-level log messages for each command execution to provide an audit trail. These logs are written to the collector's own log output (not the telemetry pipeline) and include the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | The full command string (space-joined) |
+| `pid` | int | Process ID of the executed command |
+| `exit_code` | int | Exit code (0 for success, >0 for failure, -1 if unavailable) |
+| `duration` | duration | Wall-clock duration of the execution |
+| `mode` | string | `scheduled` or `streaming` |
+| `receiver_id` | string | The receiver's component ID (e.g. `exec/myname`) |
+
+In **scheduled mode**, a `"Command exited"` message is logged after each execution completes.
+
+In **streaming mode**, a `"Command started"` message is logged when the process starts (with `command`, `pid`, `mode`, and `receiver_id` fields), and a `"Command exited"` message is logged when the process exits (with all fields including `exit_code` and `duration`).
+
 ## Building a Custom Collector
 
 Use the [OpenTelemetry Collector Builder (ocb)](https://github.com/open-telemetry/opentelemetry-collector-releases/tree/main/cmd/builder) to include this receiver in a custom collector distribution:
