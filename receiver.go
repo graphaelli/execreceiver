@@ -219,8 +219,13 @@ func (r *execReceiver) executeOnce(ctx context.Context) {
 }
 
 // runStreaming runs the command continuously, restarting on exit.
+// It uses exponential backoff: the restart delay starts at RestartDelay,
+// doubles on each consecutive failure, and caps at MaxRestartDelay.
+// The backoff resets when the command runs longer than RestartDelay.
 func (r *execReceiver) runStreaming(ctx context.Context) {
 	defer r.wg.Done()
+
+	currentDelay := r.cfg.RestartDelay
 
 	for {
 		select {
@@ -230,15 +235,30 @@ func (r *execReceiver) runStreaming(ctx context.Context) {
 		}
 
 		r.telemetry.ExecReceiverExecutions.Add(ctx, 1)
+		start := time.Now()
 		r.streamCommand(ctx)
+		elapsed := time.Since(start)
+
+		// Reset backoff if the command ran successfully for longer than
+		// the base restart delay (i.e., it didn't immediately crash).
+		if elapsed > r.cfg.RestartDelay {
+			currentDelay = r.cfg.RestartDelay
+		}
 
 		// Check if we should stop before restarting.
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(r.cfg.RestartDelay):
-			r.logger.Info("Restarting streaming command")
+		case <-time.After(currentDelay):
+			r.logger.Info("Restarting streaming command",
+				zap.Duration("backoff", currentDelay))
 			r.telemetry.ExecReceiverRestarts.Add(ctx, 1)
+		}
+
+		// Increase backoff for next restart (exponential).
+		currentDelay *= 2
+		if r.cfg.MaxRestartDelay > 0 && currentDelay > r.cfg.MaxRestartDelay {
+			currentDelay = r.cfg.MaxRestartDelay
 		}
 	}
 }

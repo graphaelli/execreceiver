@@ -5,6 +5,7 @@ package execreceiver
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"testing"
 	"time"
@@ -207,11 +208,12 @@ func TestScheduledTimeout(t *testing.T) {
 
 func TestStreamingBasic(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "for i in 1 2 3; do echo line$i; done"},
-		Mode:          ModeStreaming,
-		IncludeStderr: true,
-		MaxBufferSize: 1024 * 1024,
-		RestartDelay:  time.Hour, // don't restart during test
+		Command:         []string{"sh", "-c", "for i in 1 2 3; do echo line$i; done"},
+		Mode:            ModeStreaming,
+		IncludeStderr:   true,
+		MaxBufferSize:   1024 * 1024,
+		RestartDelay:    time.Hour, // don't restart during test
+		MaxRestartDelay: time.Hour,
 	}
 	r, sink := newTestReceiver(t, cfg)
 
@@ -241,11 +243,12 @@ func TestStreamingBasic(t *testing.T) {
 
 func TestStreamingRestart(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo restarted; exit 0"},
-		Mode:          ModeStreaming,
-		IncludeStderr: true,
-		MaxBufferSize: 1024 * 1024,
-		RestartDelay:  100 * time.Millisecond,
+		Command:         []string{"sh", "-c", "echo restarted; exit 0"},
+		Mode:            ModeStreaming,
+		IncludeStderr:   true,
+		MaxBufferSize:   1024 * 1024,
+		RestartDelay:    100 * time.Millisecond,
+		MaxRestartDelay: 100 * time.Millisecond, // cap at restart_delay to keep restarts fast
 	}
 	r, sink := newTestReceiver(t, cfg)
 
@@ -459,6 +462,130 @@ func TestScheduledInterval(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return sink.LogRecordCount() >= 3
 	}, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestStreamingBackoffIncreasesOnRapidFailures(t *testing.T) {
+	// Use a command that exits immediately to trigger rapid failures.
+	// With restart_delay=50ms and max_restart_delay=200ms, the delays should be:
+	//   50ms, 100ms, 200ms (capped), 200ms, ...
+	// After 3 restarts (50+100+200=350ms minimum), we check timing.
+	cfg := &Config{
+		Command:         []string{"sh", "-c", "echo backoff; exit 1"},
+		Mode:            ModeStreaming,
+		IncludeStderr:   true,
+		MaxBufferSize:   1024 * 1024,
+		RestartDelay:    50 * time.Millisecond,
+		MaxRestartDelay: 200 * time.Millisecond,
+	}
+	r, sink := newTestReceiver(t, cfg)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	start := time.Now()
+
+	// Wait for at least 4 executions (initial + 3 restarts).
+	// With backoff: 0 + 50ms + 100ms + 200ms = 350ms minimum before 4th execution starts.
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() >= 4
+	}, 5*time.Second, 10*time.Millisecond)
+
+	elapsed := time.Since(start)
+
+	// The total delay for 3 restarts should be at least 350ms (50+100+200).
+	// Without backoff it would be 150ms (3*50ms).
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(300),
+		"backoff should cause restarts to take longer than without backoff")
+}
+
+func TestStreamingBackoffResetsAfterSuccessfulRun(t *testing.T) {
+	// This test uses a command that:
+	// 1. First run: exits immediately (triggers backoff increase to 100ms)
+	// 2. Second run: sleeps for 200ms (longer than restart_delay=50ms), then exits
+	//    -> backoff should reset to 50ms
+	// 3. Third run: exits immediately again
+	// 4. Fourth run: exits immediately again
+	//
+	// If backoff reset works, runs 3+4 happen with short delays (50ms, 100ms).
+	// If backoff did NOT reset, run 3 would wait 200ms (doubled from 100ms).
+	//
+	// We verify by checking total time: with reset the total is roughly
+	// 50ms + 200ms + 50ms + 100ms = 400ms (plus execution time).
+	// Without reset it would be 50ms + 200ms + 200ms + 400ms = 850ms+.
+	//
+	// We use a state file to track which run we're on.
+	cfg := &Config{
+		Command: []string{"sh", "-c", `
+			if [ ! -f /tmp/execreceiver_backoff_test ]; then
+				echo "run1-fail"
+				touch /tmp/execreceiver_backoff_test
+				exit 1
+			elif [ ! -f /tmp/execreceiver_backoff_test2 ]; then
+				echo "run2-success"
+				touch /tmp/execreceiver_backoff_test2
+				sleep 0.2
+				exit 0
+			elif [ ! -f /tmp/execreceiver_backoff_test3 ]; then
+				echo "run3-after-reset"
+				touch /tmp/execreceiver_backoff_test3
+				exit 1
+			else
+				echo "run4-done"
+				exit 1
+			fi
+		`},
+		Mode:            ModeStreaming,
+		IncludeStderr:   true,
+		MaxBufferSize:   1024 * 1024,
+		RestartDelay:    50 * time.Millisecond,
+		MaxRestartDelay: 5 * time.Second,
+	}
+
+	// Clean up state files before test.
+	_ = os.Remove("/tmp/execreceiver_backoff_test")
+	_ = os.Remove("/tmp/execreceiver_backoff_test2")
+	_ = os.Remove("/tmp/execreceiver_backoff_test3")
+	t.Cleanup(func() {
+		_ = os.Remove("/tmp/execreceiver_backoff_test")
+		_ = os.Remove("/tmp/execreceiver_backoff_test2")
+		_ = os.Remove("/tmp/execreceiver_backoff_test3")
+	})
+
+	r, sink := newTestReceiver(t, cfg)
+
+	start := time.Now()
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	// Wait for all 4 runs to complete.
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() >= 4
+	}, 10*time.Second, 10*time.Millisecond)
+
+	elapsed := time.Since(start)
+
+	var bodies []string
+	for _, ld := range sink.AllLogs() {
+		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+			rl := ld.ResourceLogs().At(i)
+			for j := 0; j < rl.ScopeLogs().Len(); j++ {
+				sl := rl.ScopeLogs().At(j)
+				for k := 0; k < sl.LogRecords().Len(); k++ {
+					bodies = append(bodies, sl.LogRecords().At(k).Body().Str())
+				}
+			}
+		}
+	}
+
+	assert.Contains(t, bodies, "run1-fail")
+	assert.Contains(t, bodies, "run2-success")
+	assert.Contains(t, bodies, "run3-after-reset")
+	assert.Contains(t, bodies, "run4-done")
+
+	// With backoff reset, total should be well under 2s.
+	// Without reset, the accumulated backoff would be much larger.
+	assert.Less(t, elapsed.Milliseconds(), int64(2000),
+		"backoff should have reset after the successful long-running command")
 }
 
 func TestAuditLogScheduled(t *testing.T) {

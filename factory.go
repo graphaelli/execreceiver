@@ -25,12 +25,13 @@ func NewFactory() receiver.Factory {
 
 func createDefaultConfig() component.Config {
 	return &Config{
-		Mode:          ModeScheduled,
-		Interval:      60 * time.Second,
-		IncludeStderr: true,
-		MaxBufferSize: 1024 * 1024,      // 1MB
-		MaxOutputSize: 10 * 1024 * 1024, // 10MB
-		RestartDelay:  time.Second,
+		Mode:            ModeScheduled,
+		Interval:        60 * time.Second,
+		IncludeStderr:   true,
+		MaxBufferSize:   1024 * 1024,      // 1MB
+		MaxOutputSize:   10 * 1024 * 1024, // 10MB
+		RestartDelay:    time.Second,
+		MaxRestartDelay: 5 * time.Minute,
 	}
 }
 
