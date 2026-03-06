@@ -14,6 +14,9 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func newTestReceiver(t *testing.T, cfg *Config) (*execReceiver, *consumertest.LogsSink) {
@@ -381,4 +384,163 @@ func TestScheduledInterval(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return sink.LogRecordCount() >= 3
 	}, 5*time.Second, 50*time.Millisecond)
+}
+
+func TestAuditLogScheduled(t *testing.T) {
+	core, observed := observer.New(zapcore.InfoLevel)
+
+	cfg := &Config{
+		Command:       []string{"echo", "hello"},
+		Mode:          ModeScheduled,
+		Interval:      time.Hour,
+		IncludeStderr: true,
+		MaxBufferSize: 1024 * 1024,
+		RestartDelay:  time.Second,
+	}
+	sink := new(consumertest.LogsSink)
+	settings := receivertest.NewNopSettings(typ)
+	settings.Logger = zap.New(core)
+	r, err := newExecReceiver(settings, cfg, sink)
+	require.NoError(t, err)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	// Wait for the command to execute and produce output.
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() > 0
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// Find the "Command exited" audit log.
+	var exitLogs []observer.LoggedEntry
+	for _, entry := range observed.All() {
+		if entry.Message == "Command exited" {
+			exitLogs = append(exitLogs, entry)
+		}
+	}
+	require.NotEmpty(t, exitLogs, "expected at least one 'Command exited' audit log")
+
+	entry := exitLogs[0]
+	assert.Equal(t, zapcore.InfoLevel, entry.Level)
+
+	fields := fieldMap(entry.ContextMap())
+	assert.Equal(t, "echo hello", fields["command"])
+	assert.Equal(t, int64(0), fields["exit_code"])
+	assert.Equal(t, "scheduled", fields["mode"])
+	assert.Contains(t, fields, "pid")
+	assert.Contains(t, fields, "duration")
+	assert.Contains(t, fields, "receiver_id")
+}
+
+func TestAuditLogScheduledNonZeroExit(t *testing.T) {
+	core, observed := observer.New(zapcore.InfoLevel)
+
+	cfg := &Config{
+		Command:       []string{"sh", "-c", "exit 2"},
+		Mode:          ModeScheduled,
+		Interval:      time.Hour,
+		IncludeStderr: true,
+		MaxBufferSize: 1024 * 1024,
+		RestartDelay:  time.Second,
+	}
+	sink := new(consumertest.LogsSink)
+	settings := receivertest.NewNopSettings(typ)
+	settings.Logger = zap.New(core)
+	r, err := newExecReceiver(settings, cfg, sink)
+	require.NoError(t, err)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	// Wait for the audit log to appear.
+	require.Eventually(t, func() bool {
+		for _, entry := range observed.All() {
+			if entry.Message == "Command exited" {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 50*time.Millisecond)
+
+	var exitLog observer.LoggedEntry
+	for _, entry := range observed.All() {
+		if entry.Message == "Command exited" {
+			exitLog = entry
+			break
+		}
+	}
+
+	fields := fieldMap(exitLog.ContextMap())
+	assert.Equal(t, int64(2), fields["exit_code"])
+	assert.Equal(t, "sh -c exit 2", fields["command"])
+}
+
+func TestAuditLogStreaming(t *testing.T) {
+	core, observed := observer.New(zapcore.InfoLevel)
+
+	cfg := &Config{
+		Command:       []string{"sh", "-c", "echo streaming_output; exit 0"},
+		Mode:          ModeStreaming,
+		IncludeStderr: true,
+		MaxBufferSize: 1024 * 1024,
+		RestartDelay:  time.Hour, // don't restart during test
+	}
+	sink := new(consumertest.LogsSink)
+	settings := receivertest.NewNopSettings(typ)
+	settings.Logger = zap.New(core)
+	r, err := newExecReceiver(settings, cfg, sink)
+	require.NoError(t, err)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	// Wait for both audit logs to appear.
+	require.Eventually(t, func() bool {
+		var hasStarted, hasExited bool
+		for _, entry := range observed.All() {
+			if entry.Message == "Command started" {
+				hasStarted = true
+			}
+			if entry.Message == "Command exited" {
+				hasExited = true
+			}
+		}
+		return hasStarted && hasExited
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// Verify "Command started" log fields.
+	var startLog observer.LoggedEntry
+	for _, entry := range observed.All() {
+		if entry.Message == "Command started" {
+			startLog = entry
+			break
+		}
+	}
+	assert.Equal(t, zapcore.InfoLevel, startLog.Level)
+	startFields := fieldMap(startLog.ContextMap())
+	assert.Contains(t, startFields, "pid")
+	assert.Equal(t, "streaming", startFields["mode"])
+	assert.Contains(t, startFields, "command")
+	assert.Contains(t, startFields, "receiver_id")
+
+	// Verify "Command exited" log fields.
+	var exitLog observer.LoggedEntry
+	for _, entry := range observed.All() {
+		if entry.Message == "Command exited" {
+			exitLog = entry
+			break
+		}
+	}
+	assert.Equal(t, zapcore.InfoLevel, exitLog.Level)
+	exitFields := fieldMap(exitLog.ContextMap())
+	assert.Equal(t, int64(0), exitFields["exit_code"])
+	assert.Equal(t, "streaming", exitFields["mode"])
+	assert.Contains(t, exitFields, "pid")
+	assert.Contains(t, exitFields, "duration")
+	assert.Contains(t, exitFields, "receiver_id")
+}
+
+// fieldMap converts observer context map to a simple map for assertions.
+func fieldMap(m map[string]interface{}) map[string]interface{} {
+	return m
 }
