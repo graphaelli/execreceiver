@@ -5,6 +5,9 @@ description: |
   runs tests and formatters, and pushes corrections to the PR branch. Provides detailed
   comments explaining changes made. Helps rapidly resolve PR blockers and keep
   development flowing.
+engine:
+  id: claude
+  model: claude-opus-4-6
 
 on:
   slash_command:
