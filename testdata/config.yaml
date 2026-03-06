@@ -12,7 +12,7 @@ exec/streaming:
   environment:
     FOO: bar
   working_directory: /tmp
-  clear_environment: false
+  inherit_environment: false
 
 exec/full:
   command: ["sh", "-c", "echo test"]
@@ -25,5 +25,5 @@ exec/full:
     ENV1: value1
     ENV2: value2
   working_directory: /tmp
-  clear_environment: true
+  inherit_environment: true
   restart_delay: 5s

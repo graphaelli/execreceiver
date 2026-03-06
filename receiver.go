@@ -352,10 +352,10 @@ func (r *execReceiver) buildCommand(ctx context.Context) *exec.Cmd {
 		cmd.Dir = r.cfg.WorkingDirectory
 	}
 
-	if r.cfg.ClearEnvironment {
-		cmd.Env = []string{}
-	} else {
+	if r.cfg.InheritEnvironment {
 		cmd.Env = os.Environ()
+	} else {
+		cmd.Env = []string{}
 	}
 
 	for k, v := range r.cfg.Environment {

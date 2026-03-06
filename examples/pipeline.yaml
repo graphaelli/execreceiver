@@ -20,7 +20,7 @@ receivers:
     interval: 10s
     environment:
       STATUS: "ok"
-    clear_environment: true
+    inherit_environment: false
     working_directory: /tmp
 
 processors:
