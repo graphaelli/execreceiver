@@ -41,6 +41,12 @@ type Config struct {
 	// Only used in scheduled mode.
 	ExecTimeout time.Duration `mapstructure:"exec_timeout"`
 
+	// MaxConcurrent is the maximum number of concurrent command executions
+	// allowed in scheduled mode. If a tick fires and the limit is reached,
+	// that execution is skipped and a warning is logged. Default: 1.
+	// Only used in scheduled mode.
+	MaxConcurrent int `mapstructure:"max_concurrent"`
+
 	// IncludeStderr controls whether stderr is captured. Default: true.
 	IncludeStderr bool `mapstructure:"include_stderr"`
 
@@ -82,6 +88,7 @@ var (
 	errInvalidMode             = errors.New("mode must be 'scheduled' or 'streaming'")
 	errIntervalTooSmall        = errors.New("interval must be at least 1s")
 	errMaxBufferSizeTooSmall   = errors.New("max_buffer_size must be at least 1024 bytes")
+	errMaxConcurrentTooSmall   = errors.New("max_concurrent must be at least 1")
 	errMaxOutputSizeTooSmall   = errors.New("max_output_size must be >= max_buffer_size when set")
 	errRestartDelayNegative    = errors.New("restart_delay must not be negative")
 	errMaxRestartDelayTooSmall = errors.New("max_restart_delay must be >= restart_delay")
@@ -101,6 +108,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.Mode == ModeScheduled && cfg.Interval < time.Second {
 		errs = multierr.Append(errs, errIntervalTooSmall)
+	}
+
+	if cfg.Mode == ModeScheduled && cfg.MaxConcurrent < 1 {
+		errs = multierr.Append(errs, errMaxConcurrentTooSmall)
 	}
 
 	if cfg.MaxBufferSize < 1024 {

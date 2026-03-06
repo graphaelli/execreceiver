@@ -23,6 +23,7 @@ func TestCreateDefaultConfig(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	assert.Equal(t, ModeScheduled, cfg.Mode)
 	assert.Equal(t, 60*time.Second, cfg.Interval)
+	assert.Equal(t, 1, cfg.MaxConcurrent)
 	assert.True(t, cfg.IncludeStderr)
 	assert.Equal(t, 1024*1024, cfg.MaxBufferSize)
 	assert.Equal(t, time.Second, cfg.RestartDelay)

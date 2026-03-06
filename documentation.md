@@ -30,6 +30,14 @@ Total number of command executions started.
 | ---- | ----------- | ---------- | --------- | --------- |
 | 1 | Sum | Int | true | Development |
 
+### otelcol_exec_receiver_executions_skipped
+
+Total number of scheduled executions skipped due to concurrency limit.
+
+| Unit | Metric Type | Value Type | Monotonic | Stability |
+| ---- | ----------- | ---------- | --------- | --------- |
+| 1 | Sum | Int | true | Development |
+
 ### otelcol_exec_receiver_log_records
 
 Total number of log records produced from command output.

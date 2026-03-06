@@ -22,6 +22,7 @@ func TestSetupTelemetry(t *testing.T) {
 	tb.ExecReceiverErrors.Add(context.Background(), 1)
 	tb.ExecReceiverExecutionDuration.Record(context.Background(), 1)
 	tb.ExecReceiverExecutions.Add(context.Background(), 1)
+	tb.ExecReceiverExecutionsSkipped.Add(context.Background(), 1)
 	tb.ExecReceiverLogRecords.Add(context.Background(), 1)
 	tb.ExecReceiverRestarts.Add(context.Background(), 1)
 	AssertEqualExecReceiverErrors(t, testTel,
@@ -31,6 +32,9 @@ func TestSetupTelemetry(t *testing.T) {
 		[]metricdata.HistogramDataPoint[float64]{{}}, metricdatatest.IgnoreValue(),
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualExecReceiverExecutions(t, testTel,
+		[]metricdata.DataPoint[int64]{{Value: 1}},
+		metricdatatest.IgnoreTimestamp())
+	AssertEqualExecReceiverExecutionsSkipped(t, testTel,
 		[]metricdata.DataPoint[int64]{{Value: 1}},
 		metricdatatest.IgnoreTimestamp())
 	AssertEqualExecReceiverLogRecords(t, testTel,

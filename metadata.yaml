@@ -33,6 +33,14 @@ telemetry:
       sum:
         value_type: int
         monotonic: true
+    exec_receiver_executions_skipped:
+      enabled: true
+      description: Total number of scheduled executions skipped due to concurrency limit.
+      stability: development
+      unit: "1"
+      sum:
+        value_type: int
+        monotonic: true
     exec_receiver_log_records:
       enabled: true
       description: Total number of log records produced from command output.
