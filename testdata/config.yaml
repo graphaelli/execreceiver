@@ -21,6 +21,7 @@ exec/full:
   exec_timeout: 10s
   include_stderr: true
   max_buffer_size: 524288
+  max_output_size: 5242880
   environment:
     ENV1: value1
     ENV2: value2

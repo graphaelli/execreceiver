@@ -89,6 +89,37 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "max_buffer_size must be at least 1024 bytes",
 		},
 		{
+			name: "max_output_size valid when equal to max_buffer_size",
+			cfg: &Config{
+				Command:       []string{"echo", "hello"},
+				Mode:          ModeScheduled,
+				Interval:      60 * time.Second,
+				MaxBufferSize: 1024 * 1024,
+				MaxOutputSize: 1024 * 1024,
+			},
+		},
+		{
+			name: "max_output_size valid when zero (unlimited)",
+			cfg: &Config{
+				Command:       []string{"echo", "hello"},
+				Mode:          ModeScheduled,
+				Interval:      60 * time.Second,
+				MaxBufferSize: 1024 * 1024,
+				MaxOutputSize: 0,
+			},
+		},
+		{
+			name: "max_output_size too small",
+			cfg: &Config{
+				Command:       []string{"echo"},
+				Mode:          ModeScheduled,
+				Interval:      60 * time.Second,
+				MaxBufferSize: 1024 * 1024,
+				MaxOutputSize: 1024,
+			},
+			wantErr: "max_output_size must be >= max_buffer_size when set",
+		},
+		{
 			name: "negative restart delay",
 			cfg: &Config{
 				Command:       []string{"echo"},
@@ -151,6 +182,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				Interval:      10 * time.Second,
 				IncludeStderr: true,
 				MaxBufferSize: 1024 * 1024,
+				MaxOutputSize: 10 * 1024 * 1024,
 				RestartDelay:  time.Second,
 			},
 		},
@@ -163,6 +195,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				RestartDelay:       2 * time.Second,
 				IncludeStderr:      false,
 				MaxBufferSize:      2097152,
+				MaxOutputSize:      10 * 1024 * 1024,
 				Environment:        map[string]string{"FOO": "bar"},
 				WorkingDirectory:   "/tmp",
 				InheritEnvironment: false,
@@ -177,6 +210,7 @@ func TestConfigLoadFromYAML(t *testing.T) {
 				ExecTimeout:        10 * time.Second,
 				IncludeStderr:      true,
 				MaxBufferSize:      524288,
+				MaxOutputSize:      5242880,
 				Environment:        map[string]string{"ENV1": "value1", "ENV2": "value2"},
 				WorkingDirectory:   "/tmp",
 				InheritEnvironment: true,
