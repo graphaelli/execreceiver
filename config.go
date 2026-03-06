@@ -49,16 +49,17 @@ type Config struct {
 	MaxBufferSize int `mapstructure:"max_buffer_size"`
 
 	// Environment is a map of environment variables to set for the command.
-	// Added to the current process environment unless ClearEnvironment is true.
+	// When InheritEnvironment is false (default), only these variables are set.
+	// When InheritEnvironment is true, these are added to the current process environment.
 	Environment map[string]string `mapstructure:"environment"`
 
 	// WorkingDirectory sets the working directory for the command.
 	// Default: inherit from collector process.
 	WorkingDirectory string `mapstructure:"working_directory"`
 
-	// ClearEnvironment starts with an empty environment when true.
-	// Default: false.
-	ClearEnvironment bool `mapstructure:"clear_environment"`
+	// InheritEnvironment inherits the collector's environment when true.
+	// Default: false (start with a clean environment).
+	InheritEnvironment bool `mapstructure:"inherit_environment"`
 
 	// RestartDelay is the delay before restarting a streaming command
 	// that has exited. Default: 1s. Only used in streaming mode.

@@ -294,15 +294,15 @@ func TestEnvironment(t *testing.T) {
 	assert.Equal(t, "test_value_123", lr.Body().Str())
 }
 
-func TestClearEnvironment(t *testing.T) {
+func TestCleanEnvironmentByDefault(t *testing.T) {
+	// Default is inherit_environment: false, so HOME should not be set.
 	cfg := &Config{
-		Command:          []string{"sh", "-c", "echo ${HOME:-empty}"},
-		Mode:             ModeScheduled,
-		Interval:         time.Hour,
-		IncludeStderr:    true,
-		MaxBufferSize:    1024 * 1024,
-		RestartDelay:     time.Second,
-		ClearEnvironment: true,
+		Command:       []string{"sh", "-c", "echo ${HOME:-empty}"},
+		Mode:          ModeScheduled,
+		Interval:      time.Hour,
+		IncludeStderr: true,
+		MaxBufferSize: 1024 * 1024,
+		RestartDelay:  time.Second,
 	}
 	r, sink := newTestReceiver(t, cfg)
 
@@ -315,6 +315,30 @@ func TestClearEnvironment(t *testing.T) {
 
 	lr := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	assert.Equal(t, "empty", lr.Body().Str())
+}
+
+func TestInheritEnvironment(t *testing.T) {
+	// With inherit_environment: true, HOME should be inherited from the collector.
+	cfg := &Config{
+		Command:            []string{"sh", "-c", "echo ${HOME:-empty}"},
+		Mode:               ModeScheduled,
+		Interval:           time.Hour,
+		IncludeStderr:      true,
+		MaxBufferSize:      1024 * 1024,
+		RestartDelay:       time.Second,
+		InheritEnvironment: true,
+	}
+	r, sink := newTestReceiver(t, cfg)
+
+	require.NoError(t, r.Start(context.Background(), nil))
+	t.Cleanup(func() { require.NoError(t, r.Shutdown(context.Background())) })
+
+	require.Eventually(t, func() bool {
+		return sink.LogRecordCount() > 0
+	}, 5*time.Second, 50*time.Millisecond)
+
+	lr := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
+	assert.NotEqual(t, "empty", lr.Body().Str(), "HOME should be inherited from the collector environment")
 }
 
 func TestWorkingDirectory(t *testing.T) {
