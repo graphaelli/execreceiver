@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for CI checks to pass
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const ref = context.sha;
+            const maxWaitMs = 30 * 60 * 1000;
+            const pollInterval = 30 * 1000;
+            const start = Date.now();
+
+            while (true) {
+              if (Date.now() - start > maxWaitMs) {
+                core.setFailed('Timed out waiting for CI checks to complete');
+                return;
+              }
+
+              const { data } = await github.rest.checks.listForRef({
+                owner, repo, ref,
+                per_page: 100,
+              });
+
+              const runs = data.check_runs.filter(r => r.name !== 'release');
+              const incomplete = runs.filter(r => r.status !== 'completed');
+              const failed = runs.filter(r =>
+                r.status === 'completed' &&
+                !['success', 'skipped', 'neutral'].includes(r.conclusion)
+              );
+
+              console.log(`Checks: ${runs.length} total, ${incomplete.length} pending, ${failed.length} failed`);
+
+              if (failed.length > 0) {
+                core.setFailed(`CI checks failed: ${failed.map(r => r.name).join(', ')}`);
+                return;
+              }
+
+              if (incomplete.length === 0 && runs.length > 0) {
+                console.log('All CI checks passed!');
+                break;
+              }
+
+              await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --generate-notes \
+            --title "${{ github.ref_name }}"
