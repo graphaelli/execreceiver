@@ -5,8 +5,8 @@ package execreceiver
 
 import (
 	"context"
-	"os"
-	"runtime"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +30,7 @@ func newTestReceiver(t *testing.T, cfg *Config) (*execReceiver, *consumertest.Lo
 
 func TestScheduledBasic(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"echo", "hello"},
+		Command:       helperCmd(t, "echo", "hello"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour, // won't tick during test
 		MaxConcurrent: 1,
@@ -57,7 +57,8 @@ func TestScheduledBasic(t *testing.T) {
 
 	cmd, ok := lr.Attributes().Get("exec.command")
 	require.True(t, ok)
-	assert.Equal(t, "echo hello", cmd.Str())
+	assert.True(t, strings.HasSuffix(cmd.Str(), "echo hello"),
+		"exec.command should end with 'echo hello', got: %s", cmd.Str())
 
 	stream, ok := lr.Attributes().Get("exec.stream")
 	require.True(t, ok)
@@ -75,7 +76,7 @@ func TestScheduledBasic(t *testing.T) {
 
 func TestScheduledMultiLine(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"printf", "a\nb\nc"},
+		Command:       helperCmd(t, "multiline", "a", "b", "c"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -109,7 +110,7 @@ func TestScheduledMultiLine(t *testing.T) {
 
 func TestScheduledStderr(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo error_output >&2"},
+		Command:       helperCmd(t, "echo-stderr", "error_output"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -137,7 +138,7 @@ func TestScheduledStderr(t *testing.T) {
 
 func TestScheduledStderrDisabled(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo stdout_only && echo stderr_only >&2"},
+		Command:       helperCmd(t, "echo-both", "stdout_only", "stderr_only"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -171,7 +172,7 @@ func TestScheduledStderrDisabled(t *testing.T) {
 
 func TestScheduledCommandError(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "exit 1"},
+		Command:       helperCmd(t, "exit", "1"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -190,11 +191,8 @@ func TestScheduledCommandError(t *testing.T) {
 }
 
 func TestScheduledTimeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("signal handling differs on windows")
-	}
 	cfg := &Config{
-		Command:       []string{"sleep", "60"},
+		Command:       helperCmd(t, "sleep", "60000"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		ExecTimeout:   500 * time.Millisecond,
@@ -214,7 +212,7 @@ func TestScheduledTimeout(t *testing.T) {
 
 func TestStreamingBasic(t *testing.T) {
 	cfg := &Config{
-		Command:         []string{"sh", "-c", "for i in 1 2 3; do echo line$i; done"},
+		Command:         helperCmd(t, "seq", "3"),
 		Mode:            ModeStreaming,
 		IncludeStderr:   true,
 		MaxBufferSize:   1024 * 1024,
@@ -249,7 +247,7 @@ func TestStreamingBasic(t *testing.T) {
 
 func TestStreamingRestart(t *testing.T) {
 	cfg := &Config{
-		Command:         []string{"sh", "-c", "echo restarted; exit 0"},
+		Command:         helperCmd(t, "echo", "restarted"),
 		Mode:            ModeStreaming,
 		IncludeStderr:   true,
 		MaxBufferSize:   1024 * 1024,
@@ -269,7 +267,7 @@ func TestStreamingRestart(t *testing.T) {
 
 func TestShutdownBeforeStart(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"echo", "hello"},
+		Command:       helperCmd(t, "echo", "hello"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -283,7 +281,7 @@ func TestShutdownBeforeStart(t *testing.T) {
 
 func TestEnvironment(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo $TEST_VAR_EXEC"},
+		Command:       helperCmd(t, "env", "TEST_VAR_EXEC"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -306,9 +304,9 @@ func TestEnvironment(t *testing.T) {
 }
 
 func TestCleanEnvironmentByDefault(t *testing.T) {
-	// Default is inherit_environment: false, so HOME should not be set.
+	// Default is inherit_environment: false, so PATH should not be set.
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo ${HOME:-empty}"},
+		Command:       helperCmd(t, "env", "PATH"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -326,13 +324,13 @@ func TestCleanEnvironmentByDefault(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 
 	lr := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
-	assert.Equal(t, "empty", lr.Body().Str())
+	assert.Equal(t, "", lr.Body().Str())
 }
 
 func TestInheritEnvironment(t *testing.T) {
-	// With inherit_environment: true, HOME should be inherited from the collector.
+	// With inherit_environment: true, PATH should be inherited from the collector.
 	cfg := &Config{
-		Command:            []string{"sh", "-c", "echo ${HOME:-empty}"},
+		Command:            helperCmd(t, "env", "PATH"),
 		Mode:               ModeScheduled,
 		Interval:           time.Hour,
 		MaxConcurrent:      1,
@@ -351,19 +349,20 @@ func TestInheritEnvironment(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 
 	lr := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
-	assert.NotEqual(t, "empty", lr.Body().Str(), "HOME should be inherited from the collector environment")
+	assert.NotEmpty(t, lr.Body().Str(), "PATH should be inherited from the collector environment")
 }
 
 func TestWorkingDirectory(t *testing.T) {
+	dir := t.TempDir()
 	cfg := &Config{
-		Command:          []string{"pwd"},
+		Command:          helperCmd(t, "pwd"),
 		Mode:             ModeScheduled,
 		Interval:         time.Hour,
 		MaxConcurrent:    1,
 		IncludeStderr:    true,
 		MaxBufferSize:    1024 * 1024,
 		RestartDelay:     time.Second,
-		WorkingDirectory: "/tmp",
+		WorkingDirectory: dir,
 	}
 	r, sink := newTestReceiver(t, cfg)
 
@@ -375,17 +374,22 @@ func TestWorkingDirectory(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond)
 
 	lr := sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
-	// /tmp may resolve to /private/tmp on macOS
 	body := lr.Body().Str()
-	assert.True(t, body == "/tmp" || body == "/private/tmp", "unexpected working directory: %s", body)
+
+	// Resolve symlinks to handle e.g. macOS /tmp → /private/tmp
+	evalDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		evalDir = dir
+	}
+	assert.True(t, body == dir || body == evalDir, "unexpected working directory: %s", body)
 }
 
 func TestScheduledMaxOutputSize(t *testing.T) {
 	// Generate output that exceeds the max_output_size limit.
-	// Each line is "line_NNN\n" = 9 bytes. With max_output_size=50,
-	// we can fit about 5 lines (5*9=45 <= 50), and the 6th (54) exceeds it.
+	// Each line from "seq 20" is "lineN\n" (6–8 bytes). With max_output_size=50,
+	// reading stops once totalBytes exceeds 50, leaving well under 20 lines.
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "for i in $(seq -w 1 20); do echo line_$i; done"},
+		Command:       helperCmd(t, "seq", "20"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -424,7 +428,7 @@ func TestScheduledMaxOutputSize(t *testing.T) {
 func TestScheduledMaxOutputSizeUnlimited(t *testing.T) {
 	// When max_output_size is 0, all output should be captured.
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "for i in 1 2 3 4 5; do echo line$i; done"},
+		Command:       helperCmd(t, "seq", "5"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -458,14 +462,11 @@ func TestScheduledMaxOutputSizeUnlimited(t *testing.T) {
 }
 
 func TestScheduledSkipOnConcurrencyLimit(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sleep command differs on windows")
-	}
-	// Use a slow command (sleep 10) with a short interval and max_concurrent=1.
+	// Use a slow command (sleep 10s) with a short interval and max_concurrent=1.
 	// The first execution (triggered immediately on Start) will hold the
 	// semaphore for a long time. Subsequent ticks should be skipped.
 	cfg := &Config{
-		Command:       []string{"sleep", "10"},
+		Command:       helperCmd(t, "sleep", "10000"),
 		Mode:          ModeScheduled,
 		Interval:      100 * time.Millisecond,
 		MaxConcurrent: 1,
@@ -482,7 +483,7 @@ func TestScheduledSkipOnConcurrencyLimit(t *testing.T) {
 	// Ticks should be skipped because the semaphore is already held.
 	time.Sleep(500 * time.Millisecond)
 
-	// The semaphore should be full (1 slot occupied by sleep 10).
+	// The semaphore should be full (1 slot occupied by sleep).
 	// Verify that we cannot acquire the semaphore (it's full).
 	select {
 	case r.sem <- struct{}{}:
@@ -496,7 +497,7 @@ func TestScheduledSkipOnConcurrencyLimit(t *testing.T) {
 
 func TestScheduledInterval(t *testing.T) {
 	cfg := &Config{
-		Command:       []string{"echo", "tick"},
+		Command:       helperCmd(t, "echo", "tick"),
 		Mode:          ModeScheduled,
 		Interval:      200 * time.Millisecond,
 		MaxConcurrent: 1,
@@ -521,7 +522,7 @@ func TestStreamingBackoffIncreasesOnRapidFailures(t *testing.T) {
 	//   50ms, 100ms, 200ms (capped), 200ms, ...
 	// After 3 restarts (50+100+200=350ms minimum), we check timing.
 	cfg := &Config{
-		Command:         []string{"sh", "-c", "echo backoff; exit 1"},
+		Command:         helperCmd(t, "echo-exit", "backoff", "1"),
 		Mode:            ModeStreaming,
 		IncludeStderr:   true,
 		MaxBufferSize:   1024 * 1024,
@@ -560,47 +561,16 @@ func TestStreamingBackoffResetsAfterSuccessfulRun(t *testing.T) {
 	// If backoff reset works, runs 3+4 happen with short delays (50ms, 100ms).
 	// If backoff did NOT reset, run 3 would wait 200ms (doubled from 100ms).
 	//
-	// We verify by checking total time: with reset the total is roughly
-	// 50ms + 200ms + 50ms + 100ms = 400ms (plus execution time).
-	// Without reset it would be 50ms + 200ms + 200ms + 400ms = 850ms+.
-	//
-	// We use a state file to track which run we're on.
+	// State is tracked via a file managed by the testhelper "statefile" subcommand.
+	stateFile := filepath.Join(t.TempDir(), "state")
 	cfg := &Config{
-		Command: []string{"sh", "-c", `
-			if [ ! -f /tmp/execreceiver_backoff_test ]; then
-				echo "run1-fail"
-				touch /tmp/execreceiver_backoff_test
-				exit 1
-			elif [ ! -f /tmp/execreceiver_backoff_test2 ]; then
-				echo "run2-success"
-				touch /tmp/execreceiver_backoff_test2
-				sleep 0.2
-				exit 0
-			elif [ ! -f /tmp/execreceiver_backoff_test3 ]; then
-				echo "run3-after-reset"
-				touch /tmp/execreceiver_backoff_test3
-				exit 1
-			else
-				echo "run4-done"
-				exit 1
-			fi
-		`},
+		Command:         helperCmd(t, "statefile", stateFile),
 		Mode:            ModeStreaming,
 		IncludeStderr:   true,
 		MaxBufferSize:   1024 * 1024,
 		RestartDelay:    50 * time.Millisecond,
 		MaxRestartDelay: 5 * time.Second,
 	}
-
-	// Clean up state files before test.
-	_ = os.Remove("/tmp/execreceiver_backoff_test")
-	_ = os.Remove("/tmp/execreceiver_backoff_test2")
-	_ = os.Remove("/tmp/execreceiver_backoff_test3")
-	t.Cleanup(func() {
-		_ = os.Remove("/tmp/execreceiver_backoff_test")
-		_ = os.Remove("/tmp/execreceiver_backoff_test2")
-		_ = os.Remove("/tmp/execreceiver_backoff_test3")
-	})
 
 	r, sink := newTestReceiver(t, cfg)
 
@@ -643,7 +613,7 @@ func TestAuditLogScheduled(t *testing.T) {
 	core, observed := observer.New(zapcore.InfoLevel)
 
 	cfg := &Config{
-		Command:       []string{"echo", "hello"},
+		Command:       helperCmd(t, "echo", "hello"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -678,7 +648,8 @@ func TestAuditLogScheduled(t *testing.T) {
 	assert.Equal(t, zapcore.InfoLevel, entry.Level)
 
 	fields := fieldMap(entry.ContextMap())
-	assert.Equal(t, "echo hello", fields["command"])
+	assert.True(t, strings.HasSuffix(fields["command"].(string), "echo hello"),
+		"command should end with 'echo hello', got: %s", fields["command"])
 	assert.Equal(t, int64(0), fields["exit_code"])
 	assert.Equal(t, "scheduled", fields["mode"])
 	assert.Contains(t, fields, "pid")
@@ -690,7 +661,7 @@ func TestAuditLogScheduledNonZeroExit(t *testing.T) {
 	core, observed := observer.New(zapcore.InfoLevel)
 
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "exit 2"},
+		Command:       helperCmd(t, "exit", "2"),
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
@@ -727,14 +698,15 @@ func TestAuditLogScheduledNonZeroExit(t *testing.T) {
 
 	fields := fieldMap(exitLog.ContextMap())
 	assert.Equal(t, int64(2), fields["exit_code"])
-	assert.Equal(t, "sh -c exit 2", fields["command"])
+	assert.True(t, strings.HasSuffix(fields["command"].(string), "exit 2"),
+		"command should end with 'exit 2', got: %s", fields["command"])
 }
 
 func TestAuditLogStreaming(t *testing.T) {
 	core, observed := observer.New(zapcore.InfoLevel)
 
 	cfg := &Config{
-		Command:       []string{"sh", "-c", "echo streaming_output; exit 0"},
+		Command:       helperCmd(t, "echo", "streaming_output"),
 		Mode:          ModeStreaming,
 		IncludeStderr: true,
 		MaxBufferSize: 1024 * 1024,

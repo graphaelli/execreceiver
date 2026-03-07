@@ -41,7 +41,7 @@ func BenchmarkScheduledExecution(b *testing.B) {
 	for _, numLines := range []int{1, 10, 100, 1000} {
 		b.Run(fmt.Sprintf("%d-lines", numLines), func(b *testing.B) {
 			r, _ := newBenchReceiver(b)
-			r.cfg.Command = []string{"seq", fmt.Sprintf("%d", numLines)}
+			r.cfg.Command = helperCmd(b, "seq", fmt.Sprintf("%d", numLines))
 
 			require.NoError(b, r.startTelemetry())
 			b.Cleanup(func() { r.telemetry.Shutdown() })
@@ -59,7 +59,7 @@ func BenchmarkReceiverLifecycle(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		r, _ := newBenchReceiver(b)
-		r.cfg.Command = []string{"echo", "hello"}
+		r.cfg.Command = helperCmd(b, "echo", "hello")
 		r.cfg.Interval = time.Hour
 		require.NoError(b, r.Start(context.Background(), nil))
 		require.NoError(b, r.Shutdown(context.Background()))
@@ -70,7 +70,7 @@ func newBenchReceiver(b *testing.B) (*execReceiver, *consumertest.LogsSink) {
 	b.Helper()
 	sink := new(consumertest.LogsSink)
 	cfg := &Config{
-		Command:       []string{"echo", "hello"},
+		Command:       []string{"echo", "hello"}, // overridden by individual benchmarks
 		Mode:          ModeScheduled,
 		Interval:      time.Hour,
 		MaxConcurrent: 1,
