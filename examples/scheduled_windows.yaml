@@ -1,0 +1,20 @@
+receivers:
+  exec:
+    command: ["powershell", "-Command", "Invoke-WebRequest -Uri http://localhost:8080/health -UseBasicParsing | Select-Object -ExpandProperty Content"]
+    mode: scheduled
+    interval: 30s
+    exec_timeout: 10s
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [exec]
+      processors: [batch]
+      exporters: [debug]

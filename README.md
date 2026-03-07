@@ -62,12 +62,34 @@ receivers:
     interval: 30s
 ```
 
+On Windows:
+
+```yaml
+receivers:
+  exec:
+    command: ["powershell", "-Command", "Invoke-WebRequest -Uri http://localhost:8080/health -UseBasicParsing | Select-Object -ExpandProperty Content"]
+    mode: scheduled
+    interval: 30s
+    exec_timeout: 10s
+```
+
 ### Example: Streaming
 
 ```yaml
 receivers:
   exec:
     command: ["tail", "-f", "/var/log/syslog"]
+    mode: streaming
+    restart_delay: 5s
+    include_stderr: false
+```
+
+On Windows:
+
+```yaml
+receivers:
+  exec:
+    command: ["powershell", "-Command", "Get-Content -Path C:\\logs\\app.log -Wait -Tail 0"]
     mode: streaming
     restart_delay: 5s
     include_stderr: false

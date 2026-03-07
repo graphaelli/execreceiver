@@ -1,0 +1,23 @@
+receivers:
+  exec:
+    command: ["powershell", "-Command", "Get-Content -Path C:\\logs\\app.log -Wait -Tail 0"]
+    mode: streaming
+    include_stderr: false
+    restart_delay: 5s
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  otlp:
+    endpoint: otel-collector:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    logs:
+      receivers: [exec]
+      processors: [batch]
+      exporters: [otlp]
