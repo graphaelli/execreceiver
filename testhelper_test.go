@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	initTestHelper    sync.Once
-	testHelperBin     string
+	initTestHelper     sync.Once
+	testHelperBin      string
 	testHelperBuildErr error
 )
 
