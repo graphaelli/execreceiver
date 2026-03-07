@@ -427,10 +427,8 @@ func (r *execReceiver) readLines(reader io.Reader, stream string) []outputLine {
 func (r *execReceiver) buildCommand(ctx context.Context) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, r.cfg.Command[0], r.cfg.Command[1:]...)
 
-	// Graceful shutdown: send SIGINT first, then SIGKILL after 5s.
-	cmd.Cancel = func() error {
-		return cmd.Process.Signal(os.Interrupt)
-	}
+	// Graceful shutdown: send SIGINT on Unix, Kill on Windows; SIGKILL after 5s.
+	cmd.Cancel = cancelFunc(cmd)
 	cmd.WaitDelay = 5 * time.Second
 
 	if r.cfg.WorkingDirectory != "" {
